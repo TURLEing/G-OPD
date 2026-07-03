@@ -42,8 +42,8 @@ export WANDB_MODE=online
 export USED_MODEL="no_api"
 
 
-aime24_test_path=../G-OPD-Training-Data/AIME2024/test.parquet
-aime25_test_path=../G-OPD-Training-Data/AIME2025/test.parquet
+aime24_test_path=/data/oss_bucket_0/tianze/GOPD/datasets/AIME2024/test.parquet
+aime25_test_path=/data/oss_bucket_0/tianze/GOPD/datasets/AIME2025/test.parquet
 
 test_files="['$aime24_test_path', '$aime25_test_path']"
 

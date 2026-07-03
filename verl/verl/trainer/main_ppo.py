@@ -305,7 +305,8 @@ class TaskRunner:
             config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {})
         )
         val_reward_fn = load_reward_manager(
-            config, tokenizer, num_examine=1, **config.reward_model.get("reward_kwargs", {})
+            config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {})
+            # num_examine= 1 -> 0
         )
 
         resource_pool_manager = self.init_resource_pool_mgr(config)
