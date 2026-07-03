@@ -39,7 +39,7 @@ python3 -m verl.trainer.main_ppo \
         actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=0.0 \
         actor_rollout_ref.model.use_remove_padding=True \
         actor_rollout_ref.actor.policy_loss.only_reverse_kl_advantages=True \
-        actor_rollout_ref.actor.policy_loss.lambda_vals=1.25 \
+        actor_rollout_ref.actor.policy_loss.lambda_vals=1.0 \
         actor_rollout_ref.actor.policy_loss.multi_teacher_distill=true \
         actor_rollout_ref.actor.ppo_mini_batch_size=1024 \
         actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
