@@ -963,6 +963,78 @@ class RayPPOTrainer:
             if self.use_rm:
                 self.rm_wg.stop_profile()
 
+    def _print_train_samples(self, batch: DataProto, num_samples: int = 2, head_chars: int = 400, tail_chars: int = 400):
+        """Print a few rollout samples per step to eyeball response quality/length.
+
+        Helps diagnose length inflation: shows valid length, whether the response hit the
+        max_response_length cap, and whether it terminated with EOS (vs. was truncated).
+        Also mirrors the samples to wandb as a growing table under "train/generations".
+        """
+        responses = batch.batch["responses"]
+        response_mask = batch.batch["response_mask"]
+        bsz, response_length = responses.shape
+        num_samples = min(num_samples, bsz)
+        eos_id = self.tokenizer.eos_token_id
+
+        valid_lens = response_mask.sum(dim=-1)
+        mean_len = valid_lens.float().mean().item()
+        capped = int((valid_lens >= response_length).sum().item())
+
+        print(
+            f"\n{'=' * 30} rollout samples @ step {self.global_steps} {'=' * 30}\n"
+            f"[batch stats] size={bsz} mean_len={mean_len:.1f} max_cap={response_length} "
+            f"hit_cap={capped}/{bsz} ({100.0 * capped / bsz:.1f}%)"
+        )
+        samples = []  # (input, output, info) tuples for wandb
+        for i in range(num_samples):
+            valid_len = int(valid_lens[i].item())
+            resp_ids = responses[i, :valid_len]
+            last_id = int(resp_ids[-1].item()) if valid_len > 0 else -1
+            ended_with_eos = last_id == eos_id
+            hit_cap = valid_len >= response_length
+            resp_text = self.tokenizer.decode(resp_ids, skip_special_tokens=False)
+            if len(resp_text) > head_chars + tail_chars:
+                shown = resp_text[:head_chars] + "\n ...<omitted>... \n" + resp_text[-tail_chars:]
+            else:
+                shown = resp_text
+            teacher = ""
+            if "opd_teacher" in batch.non_tensor_batch:
+                teacher = f" teacher={batch.non_tensor_batch['opd_teacher'][i]}"
+            info = f"len={valid_len} ended_with_eos={ended_with_eos} hit_cap={hit_cap}{teacher}"
+            print(f"\n--- sample {i} | {info} ---\n{shown}")
+
+            prompt_text = ""
+            if "raw_prompt" in batch.non_tensor_batch:
+                prompt_text = str(batch.non_tensor_batch["raw_prompt"][i])[: head_chars * 2]
+            samples.append((prompt_text, shown, info))
+        print("=" * 82 + "\n", flush=True)
+
+        self._log_train_generations_to_wandb(samples)
+
+    def _log_train_generations_to_wandb(self, samples):
+        """Append the current step's rollout samples to a persistent wandb table."""
+        if "wandb" not in self.config.trainer.logger:
+            return
+        try:
+            import wandb
+        except ImportError:
+            return
+
+        columns = ["step"] + sum(
+            [[f"input_{i + 1}", f"output_{i + 1}", f"info_{i + 1}"] for i in range(len(samples))], []
+        )
+        if not hasattr(self, "_train_gen_table") or self._train_gen_table.columns != columns:
+            self._train_gen_table = wandb.Table(columns=columns)
+
+        # Rebuild the table to preserve history (workaround for wandb table append limitation).
+        new_table = wandb.Table(columns=columns, data=self._train_gen_table.data)
+        row = [self.global_steps]
+        for s in samples:
+            row.extend(s)
+        new_table.add_data(*row)
+        wandb.log({"train/generations": new_table}, step=self.global_steps)
+        self._train_gen_table = new_table
+
     def _balance_batch(self, batch: DataProto, metrics, logging_prefix="global_seqlen", keep_minibatch=False):
         """Reorder the data on single controller such that each dp rank gets similar total tokens"""
         attention_mask = batch.batch["attention_mask"]
@@ -1125,6 +1197,13 @@ class RayPPOTrainer:
 
                     if "response_mask" not in batch.batch.keys():
                         batch.batch["response_mask"] = compute_response_mask(batch)
+
+                    # ---- debug: eyeball a few rollout samples per step ----
+                    # Toggle with env var G_OPD_PRINT_SAMPLES (number of samples; 0 disables).
+                    _n_print = int(os.environ.get("G_OPD_PRINT_SAMPLES", "0"))
+                    if _n_print > 0:
+                        self._print_train_samples(batch, num_samples=_n_print)
+
                     # Balance the number of valid tokens across DP ranks.
                     # NOTE: This usually changes the order of data in the `batch`,
                     # which won't affect the advantage calculation (since it's based on uid),

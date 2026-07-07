@@ -1129,10 +1129,6 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             elif fsdp_version(self.base_policy.actor_module) == 2:
                 self.base_policy.actor_module.reshard()
 
-        # Offload base model to CPU to free GPU memory
-        offload_fsdp_model_to_cpu(self.base_module_fsdp)
-        log_gpu_memory_usage("After offload base model during compute_base_log_prob", logger=logger)
-
         return output
 
     @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="actor"))
@@ -1172,10 +1168,6 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.base_ref_policy.actor_module._handle.reshard(True)
             elif fsdp_version(self.base_ref_policy.actor_module) == 2:
                 self.base_ref_policy.actor_module.reshard()
-
-        # Offload base ref model to CPU to free GPU memory
-        offload_fsdp_model_to_cpu(self.base_ref_module_fsdp)
-        log_gpu_memory_usage("After offload base ref model during compute_base_ref_log_prob", logger=logger)
 
         return output
 

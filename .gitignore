@@ -207,3 +207,8 @@ outputs
 
 # data
 *.parquet
+
+# large local model/data
+/datasets/
+/qwen3-4b-rl-code/
+/qwen3-4b-rl-math/
