@@ -1,5 +1,7 @@
-export WANDB_MODE=offline
+export WANDB_API_KEY="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"
+export WANDB_MODE=online
 export USED_MODEL="no_api"
+
 
 
 aime24_test_path=/data/oss_bucket_0/tianze/GOPD/datasets/AIME2024/test.parquet
