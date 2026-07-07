@@ -2,6 +2,8 @@ export WANDB_API_KEY="wandb_v1_3ZfRYtSg8DQnIGHqz9vjaABGyOO_qDGl5gfzYyMmSwWsWbDkt
 export WANDB_MODE=online
 export USED_MODEL="no_api"
 
+# Print/log a few rollout samples every training step for debugging length blow-up.
+export G_OPD_PRINT_SAMPLES="${G_OPD_PRINT_SAMPLES:-2}"
 
 
 aime24_test_path=/data/oss_bucket_0/tianze/GOPD/datasets/AIME2024/test.parquet
