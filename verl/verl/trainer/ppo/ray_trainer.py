@@ -985,18 +985,14 @@ class RayPPOTrainer:
             f"[batch stats] size={bsz} mean_len={mean_len:.1f} max_cap={response_length} "
             f"hit_cap={capped}/{bsz} ({100.0 * capped / bsz:.1f}%)"
         )
-        samples = []  # (input, output, info) tuples for wandb
+        samples = []  # (sample_id, input, output, info) tuples for wandb
         for i in range(num_samples):
             valid_len = int(valid_lens[i].item())
             resp_ids = responses[i, :valid_len]
             last_id = int(resp_ids[-1].item()) if valid_len > 0 else -1
             ended_with_eos = last_id == eos_id
             hit_cap = valid_len >= response_length
-            resp_text = self.tokenizer.decode(resp_ids, skip_special_tokens=False)
-            if len(resp_text) > head_chars + tail_chars:
-                shown = resp_text[:head_chars] + "\n ...<omitted>... \n" + resp_text[-tail_chars:]
-            else:
-                shown = resp_text
+            shown = self.tokenizer.decode(resp_ids, skip_special_tokens=False)
             teacher = ""
             if "opd_teacher" in batch.non_tensor_batch:
                 teacher = f" teacher={batch.non_tensor_batch['opd_teacher'][i]}"
@@ -1006,7 +1002,7 @@ class RayPPOTrainer:
             prompt_text = ""
             if "raw_prompt" in batch.non_tensor_batch:
                 prompt_text = str(batch.non_tensor_batch["raw_prompt"][i])[: head_chars * 2]
-            samples.append((prompt_text, shown, info))
+            samples.append((i, prompt_text, shown, info))
         print("=" * 82 + "\n", flush=True)
 
         self._log_train_generations_to_wandb(samples)
@@ -1020,19 +1016,21 @@ class RayPPOTrainer:
         except ImportError:
             return
 
-        columns = ["step"] + sum(
-            [[f"input_{i + 1}", f"output_{i + 1}", f"info_{i + 1}"] for i in range(len(samples))], []
-        )
+        columns = ["step", "sample_id", "input", "output", "info"]
         if not hasattr(self, "_train_gen_table") or self._train_gen_table.columns != columns:
             self._train_gen_table = wandb.Table(columns=columns)
 
         # Rebuild the table to preserve history (workaround for wandb table append limitation).
         new_table = wandb.Table(columns=columns, data=self._train_gen_table.data)
-        row = [self.global_steps]
-        for s in samples:
-            row.extend(s)
-        new_table.add_data(*row)
-        wandb.log({"train/generations": new_table}, step=self.global_steps)
+        for sample_id, prompt, output, info in samples:
+            new_table.add_data(self.global_steps, sample_id, prompt, output, info)
+        wandb.log(
+            {
+                "train/generations": new_table,
+                "train/generations_logged_samples": len(samples),
+            },
+            step=self.global_steps,
+        )
         self._train_gen_table = new_table
 
     def _balance_batch(self, batch: DataProto, metrics, logging_prefix="global_seqlen", keep_minibatch=False):
